@@ -15,6 +15,11 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="shader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -23,15 +28,10 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="shader.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="triangle.f.glsl">
+    <None Include="phong-shading.vertex">
       <Filter>Source Files</Filter>
     </None>
-    <None Include="triangle.v.glsl">
+    <None Include="phong-shading.fragment">
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>
