@@ -27,12 +27,4 @@
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
-  <ItemGroup>
-    <None Include="phong-shading.vertex">
-      <Filter>Source Files</Filter>
-    </None>
-    <None Include="phong-shading.fragment">
-      <Filter>Source Files</Filter>
-    </None>
-  </ItemGroup>
 </Project>

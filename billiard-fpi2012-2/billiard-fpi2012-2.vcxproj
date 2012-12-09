@@ -60,6 +60,10 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>glew32.lib;freeglut.lib;soil.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <PostBuildEvent>
+      <Command>
+      </Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -86,10 +90,6 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="shader.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="phong-shading.fragment" />
-    <None Include="phong-shading.vertex" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
