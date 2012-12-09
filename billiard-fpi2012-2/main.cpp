@@ -219,7 +219,7 @@ public:
     glDeleteBuffers(1, &ibo_elements);
   }
 };
-Mesh piso, mesa, bola, light_bbox;
+Mesh piso, mesa_borda, bola, light_bbox;
 
 
 void load_obj(const char* filename, Mesh* mesh) {
@@ -275,7 +275,7 @@ void load_obj(const char* filename, Mesh* mesh) {
 
 int init_resources(char* vshader_filename, char* fshader_filename)
 {
-  load_obj("mesa.obj", &mesa);
+  load_obj("mesa-borda.obj", &mesa_borda);
   load_obj("bola.obj", &bola);
   // mesh position initialized in init_view()
 
@@ -303,7 +303,7 @@ int init_resources(char* vshader_filename, char* fshader_filename)
   light_bbox.vertices.push_back(glm::vec4(-0.1,  0.1,  0.1, 0.0));
   light_bbox.object2world = glm::translate(glm::mat4(1), light_position);
 
-  mesa.upload();
+  mesa_borda.upload();
   bola.upload();
   piso.upload();
   light_bbox.upload();
@@ -385,7 +385,7 @@ int init_resources(char* vshader_filename, char* fshader_filename)
 }
 
 void init_view() {
-  mesa.object2world = glm::mat4(1);
+  mesa_borda.object2world = glm::mat4(1);
   bola.object2world = glm::mat4(1);
   transforms[MODE_CAMERA] = glm::lookAt(
     glm::vec3(0.0,  0.0, 4.0),   // eye
@@ -502,9 +502,9 @@ void logic() {
   }
   
   if (view_mode == MODE_OBJECT) {
-    mesa.object2world = glm::rotate(mesa.object2world, delta_rotY, glm::vec3(0.0, 1.0, 0.0));
-    mesa.object2world = glm::rotate(mesa.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
-    mesa.object2world = glm::translate(mesa.object2world, glm::vec3(0.0, 0.0, delta_transZ));
+    mesa_borda.object2world = glm::rotate(mesa_borda.object2world, delta_rotY, glm::vec3(0.0, 1.0, 0.0));
+    mesa_borda.object2world = glm::rotate(mesa_borda.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
+    mesa_borda.object2world = glm::translate(mesa_borda.object2world, glm::vec3(0.0, 0.0, delta_transZ));
   } else if (view_mode == MODE_CAMERA) {
     // Camera is reverse-facing, so reverse Z translation and X rotation.
     // Plus, the View matrix is the inverse of the camera2world (it's
@@ -531,15 +531,15 @@ void logic() {
     glm::vec3 vb = get_arcball_vector( cur_mx,  cur_my);
     float angle = acos(min(1.0f, glm::dot(va, vb)));
     glm::vec3 axis_in_camera_coord = glm::cross(va, vb);
-    glm::mat3 camera2object = glm::inverse(glm::mat3(transforms[MODE_CAMERA]) * glm::mat3(mesa.object2world));
+    glm::mat3 camera2object = glm::inverse(glm::mat3(transforms[MODE_CAMERA]) * glm::mat3(mesa_borda.object2world));
     glm::vec3 axis_in_object_coord = camera2object * axis_in_camera_coord;
-    mesa.object2world = glm::rotate(mesa.object2world, glm::degrees(angle), axis_in_object_coord);
+    mesa_borda.object2world = glm::rotate(mesa_borda.object2world, glm::degrees(angle), axis_in_object_coord);
     last_mx = cur_mx;
     last_my = cur_my;
   }
 
   // Model
-  // Set in onDisplay() - cf. mesa.object2world
+  // Set in onDisplay() - cf. mesa_borda.object2world
 
   // View
   glm::mat4 world2camera = transforms[MODE_CAMERA];
@@ -563,7 +563,7 @@ void draw() {
 
   glUseProgram(program);
 
-  mesa.draw();
+  mesa_borda.draw();
   bola.draw();
   piso.draw();
   light_bbox.draw_bbox();
