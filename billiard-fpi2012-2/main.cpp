@@ -5,32 +5,31 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-/* Use glew.h instead of gl.h to get all the GL prototypes declared */
+/* Glew ja inclui o gl.h */
 #include <GL/glew.h>
-/* Using the GLUT library for the base windowing setup */
 #include <GL/glut.h>
+/* SOIL - Carregamento de imagens */
+#include <GL/SOIL.h>
 /* GLM */
-// #define GLM_MESSAGES
 #include <../glm/glm.hpp>
 #include <../glm/gtc/matrix_transform.hpp>
 #include <../glm/gtc/type_ptr.hpp>
 #include "shader.h"
 
-#define PISO_SZ 20
+#define PISO_SZ 15
 
 int screen_width=800, screen_height=600;
 GLuint program;
-GLint attribute_v_coord = -1;
-GLint attribute_v_normal = -1;
+GLint attribute_v_coord = -1, attribute_v_normal = -1, attribute_v_texcoords = -1, attribute_v_tangent = 1;
 GLint uniform_m = -1, uniform_v = -1, uniform_p = -1;
-GLint uniform_m_3x3_inv_transp = -1, uniform_v_inv = -1;
+GLint uniform_m_3x3_inv_transp = -1, uniform_v_inv = -1, uniform_mytexture = -1;
 bool compute_arcball;
 int last_mx = 0, last_my = 0, cur_mx = 0, cur_my = 0;
 int arcball_on = false;
 
 using namespace std;
 
-enum MODES { MODE_OBJECT, MODE_CAMERA, MODE_LIGHT, MODE_LAST } view_mode;
+enum MODES { MODE_CAMERA, MODE_OBJECT, MODE_LIGHT, MODE_LAST } view_mode;
 int rotY_direction = 0, rotX_direction = 0, transZ_direction = 0, strife = 0;
 float speed_factor = 1;
 glm::mat4 transforms[MODE_LAST];
@@ -41,19 +40,28 @@ static unsigned int fps_frames = 0;
 
 class Mesh {
 private:
-  GLuint vbo_vertices, vbo_normals, ibo_elements;
+  GLuint vbo_vertices, vbo_normals, vbo_texcoords, vbo_tangents, ibo_elements;
 public:
   vector<glm::vec4> vertices;
   vector<glm::vec3> normals;
   vector<GLushort> elements;
+  vector<glm::vec2> texcoords;
+  vector<glm::vec3> tangents;
   glm::mat4 object2world;
+  GLuint texture_id;
+  int tex_width, tex_height;
 
-  Mesh() : vbo_vertices(0), vbo_normals(0), ibo_elements(0), object2world(glm::mat4(1)) {}
+  Mesh() : vbo_vertices(0), vbo_normals(0), vbo_texcoords(0), vbo_tangents(0),
+           ibo_elements(0), object2world(glm::mat4(1)) {}
   ~Mesh() {
     if (vbo_vertices != 0)
       glDeleteBuffers(1, &vbo_vertices);
     if (vbo_normals != 0)
       glDeleteBuffers(1, &vbo_normals);
+    if (vbo_texcoords != 0)
+      glDeleteBuffers(1, &vbo_texcoords);
+    if (vbo_tangents != 0)
+      glDeleteBuffers(1, &vbo_tangents);
     if (ibo_elements != 0)
       glDeleteBuffers(1, &ibo_elements);
   }
@@ -82,6 +90,27 @@ public:
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->ibo_elements);
       glBufferData(GL_ELEMENT_ARRAY_BUFFER, this->elements.size() * sizeof(this->elements[0]),
 		   this->elements.data(), GL_STATIC_DRAW);
+    }
+
+	
+    if (this->texcoords.size() > 0) {
+      glGenBuffers(1, &this->vbo_texcoords);
+      glBindBuffer(GL_ARRAY_BUFFER, this->vbo_texcoords);
+      glBufferData(GL_ARRAY_BUFFER, this->texcoords.size() * sizeof(this->texcoords[0]),
+		   this->texcoords.data(), GL_STATIC_DRAW);
+    }
+
+	if(this->texture_id > 0) {
+		glBindTexture(GL_TEXTURE_2D, this->texture_id);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+	}
+    
+    if (this->tangents.size() > 0) {
+      glGenBuffers(1, &this->vbo_tangents);
+      glBindBuffer(GL_ARRAY_BUFFER, this->vbo_tangents);
+      glBufferData(GL_ARRAY_BUFFER, this->tangents.size() * sizeof(this->tangents[0]),
+		   this->tangents.data(), GL_STATIC_DRAW);
     }
   }
 
@@ -114,6 +143,12 @@ public:
         0                   // offset of first element
       );
     }
+
+	if(this->texture_id > 0) {
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, this->texture_id);
+		glUniform1i(uniform_mytexture, /*GL_TEXTURE*/0);
+	}
     
     /* Apply object's transformation matrix */
     glUniformMatrix4fv(uniform_m, 1, GL_FALSE, glm::value_ptr(this->object2world));
@@ -136,93 +171,11 @@ public:
     if (this->vbo_vertices != 0)
       glDisableVertexAttribArray(attribute_v_coord);
   }
-
-  /**
-   * Draw object bounding box
-   */
-  void draw_bbox() {
-    if (this->vertices.size() == 0)
-      return;
-    
-    // Cube 1x1x1, centered on origin
-    GLfloat vertices[] = {
-      -0.5, -0.5, -0.5, 1.0,
-       0.5, -0.5, -0.5, 1.0,
-       0.5,  0.5, -0.5, 1.0,
-      -0.5,  0.5, -0.5, 1.0,
-      -0.5, -0.5,  0.5, 1.0,
-       0.5, -0.5,  0.5, 1.0,
-       0.5,  0.5,  0.5, 1.0,
-      -0.5,  0.5,  0.5, 1.0,
-    };
-    GLuint vbo_vertices;
-    glGenBuffers(1, &vbo_vertices);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_vertices);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    GLushort elements[] = {
-      0, 1, 2, 3,
-      4, 5, 6, 7,
-      0, 4, 1, 5, 2, 6, 3, 7
-    };
-    GLuint ibo_elements;
-    glGenBuffers(1, &ibo_elements);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_elements);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(elements), elements, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-    GLfloat
-      min_x, max_x,
-      min_y, max_y,
-      min_z, max_z;
-    min_x = max_x = this->vertices[0].x;
-    min_y = max_y = this->vertices[0].y;
-    min_z = max_z = this->vertices[0].z;
-    for (unsigned int i = 0; i < this->vertices.size(); i++) {
-      if (this->vertices[i].x < min_x) min_x = this->vertices[i].x;
-      if (this->vertices[i].x > max_x) max_x = this->vertices[i].x;
-      if (this->vertices[i].y < min_y) min_y = this->vertices[i].y;
-      if (this->vertices[i].y > max_y) max_y = this->vertices[i].y;
-      if (this->vertices[i].z < min_z) min_z = this->vertices[i].z;
-      if (this->vertices[i].z > max_z) max_z = this->vertices[i].z;
-    }
-    glm::vec3 size = glm::vec3(max_x-min_x, max_y-min_y, max_z-min_z);
-    glm::vec3 center = glm::vec3((min_x+max_x)/2, (min_y+max_y)/2, (min_z+max_z)/2);
-    glm::mat4 transform = glm::scale(glm::mat4(1), size) * glm::translate(glm::mat4(1), center);
-    
-    /* Apply object's transformation matrix */
-    glm::mat4 m = this->object2world * transform;
-    glUniformMatrix4fv(uniform_m, 1, GL_FALSE, glm::value_ptr(m));
-    
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_vertices);
-    glEnableVertexAttribArray(attribute_v_coord);
-    glVertexAttribPointer(
-      attribute_v_coord,  // attribute
-      4,                  // number of elements per vertex, here (x,y,z,w)
-      GL_FLOAT,           // the type of each element
-      GL_FALSE,           // take our values as-is
-      0,                  // no extra data between each position
-      0                   // offset of first element
-    );
-    
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_elements);
-    glDrawElements(GL_LINE_LOOP, 4, GL_UNSIGNED_SHORT, 0);
-    glDrawElements(GL_LINE_LOOP, 4, GL_UNSIGNED_SHORT, (GLvoid*)(4*sizeof(GLushort)));
-    glDrawElements(GL_LINES, 8, GL_UNSIGNED_SHORT, (GLvoid*)(8*sizeof(GLushort)));
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    
-    glDisableVertexAttribArray(attribute_v_coord);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    
-    glDeleteBuffers(1, &vbo_vertices);
-    glDeleteBuffers(1, &ibo_elements);
-  }
 };
-Mesh piso, mesa_borda, bola, light_bbox;
+Mesh piso, mesa_borda, mesa_centro, bola, light_bbox;
 
 
-void load_obj(const char* filename, Mesh* mesh) {
+void load_obj(const char* filename, const char* texturename, Mesh* mesh) {
   ifstream in(filename, ios::in);
   if (!in) { cout << "Nao consegui ler o arquivo OBJ: " << filename << endl; exit(1); }
   vector<int> nb_seen;
@@ -271,14 +224,28 @@ void load_obj(const char* filename, Mesh* mesh) {
       }
     }
   }
+
+  //carrega a textura usando o SOIL
+  glActiveTexture(GL_TEXTURE0);
+  mesh->texture_id = SOIL_load_OGL_texture(
+    texturename,
+    SOIL_LOAD_AUTO,
+    SOIL_CREATE_NEW_ID,
+    SOIL_FLAG_INVERT_Y | SOIL_FLAG_TEXTURE_REPEATS
+	);
+  //dimensoes da textura
+  unsigned char* img = SOIL_load_image(texturename, &mesh->tex_width, &mesh->tex_height, NULL, 0);
 }
 
 int init_resources(char* vshader_filename, char* fshader_filename)
 {
-  load_obj("mesa-borda.obj", &mesa_borda);
-  load_obj("bola.obj", &bola);
-  // mesh position initialized in init_view()
+	//carrega os objetos do arquivo e inicializa
+	load_obj("mesa-borda.obj", "mesa-borda.png", &mesa_borda);
+	load_obj("mesa-centro.obj", "mesa-centro.png", &mesa_centro);
+	load_obj("bola.obj", "bola.png", &bola);
+  // posicao inicial eh configurada no init_view()
 
+  //inicializa o piso
   for (int i = -PISO_SZ/2; i < PISO_SZ/2; i++) {
     for (int j = -PISO_SZ/2; j < PISO_SZ/2; j++) {
       piso.vertices.push_back(glm::vec4(i,   0.0,  j+1, 1.0));
@@ -291,7 +258,19 @@ int init_resources(char* vshader_filename, char* fshader_filename)
 	piso.normals.push_back(glm::vec3(0.0, 1.0, 0.0));
     }
   }
+  //textura do piso
+    //carrega a textura usando o SOIL
+  glActiveTexture(GL_TEXTURE0);
+  piso.texture_id = SOIL_load_OGL_texture(
+    "piso.jpg",
+    SOIL_LOAD_AUTO,
+    SOIL_CREATE_NEW_ID,
+    SOIL_FLAG_INVERT_Y | SOIL_FLAG_TEXTURE_REPEATS
+	);
+  //dimensoes da textura
+  unsigned char* img = SOIL_load_image("piso.jpg", &piso.tex_width, &piso.tex_height, NULL, 0);
 
+  //inicializa a fonte de luz
   glm::vec3 light_position = glm::vec3(0.0,  1.0,  2.0);
   light_bbox.vertices.push_back(glm::vec4(-0.1, -0.1, -0.1, 0.0));
   light_bbox.vertices.push_back(glm::vec4( 0.1, -0.1, -0.1, 0.0));
@@ -304,6 +283,7 @@ int init_resources(char* vshader_filename, char* fshader_filename)
   light_bbox.object2world = glm::translate(glm::mat4(1), light_position);
 
   mesa_borda.upload();
+  mesa_centro.upload();
   bola.upload();
   piso.upload();
   light_bbox.upload();
@@ -378,6 +358,12 @@ int init_resources(char* vshader_filename, char* fshader_filename)
     fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
     return 0;
   }
+  uniform_name = "mytexture";
+  uniform_mytexture = glGetUniformLocation(program, uniform_name);
+  if (uniform_mytexture == -1) {
+    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
+    return 0;
+  }
 
   fps_start = glutGet(GLUT_ELAPSED_TIME);
 
@@ -385,12 +371,13 @@ int init_resources(char* vshader_filename, char* fshader_filename)
 }
 
 void init_view() {
+  mesa_centro.object2world = glm::mat4(1);
   mesa_borda.object2world = glm::mat4(1);
   bola.object2world = glm::mat4(1);
   transforms[MODE_CAMERA] = glm::lookAt(
-    glm::vec3(0.0,  0.0, 4.0),   // eye
+    glm::vec3(0.0,  8.0, 8.0),   // eye
     glm::vec3(0.0,  0.0, 0.0),   // direction
-    glm::vec3(0.0,  1.0, 0.0));  // up
+    glm::vec3(0.0,  0.5, 0.0));  // up
 }
 
 void onSpecial(int key, int x, int y) {
@@ -505,6 +492,12 @@ void logic() {
     mesa_borda.object2world = glm::rotate(mesa_borda.object2world, delta_rotY, glm::vec3(0.0, 1.0, 0.0));
     mesa_borda.object2world = glm::rotate(mesa_borda.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
     mesa_borda.object2world = glm::translate(mesa_borda.object2world, glm::vec3(0.0, 0.0, delta_transZ));
+	mesa_centro.object2world = glm::rotate(mesa_centro.object2world, delta_rotY, glm::vec3(0.0, 1.0, 0.0));
+    mesa_centro.object2world = glm::rotate(mesa_centro.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
+    mesa_centro.object2world = glm::translate(mesa_centro.object2world, glm::vec3(0.0, 0.0, delta_transZ));
+	bola.object2world = glm::rotate(bola.object2world, delta_rotY, glm::vec3(0.0, 1.0, 0.0));
+    bola.object2world = glm::rotate(bola.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
+    bola.object2world = glm::translate(bola.object2world, glm::vec3(0.0, 0.0, delta_transZ));
   } else if (view_mode == MODE_CAMERA) {
     // Camera is reverse-facing, so reverse Z translation and X rotation.
     // Plus, the View matrix is the inverse of the camera2world (it's
@@ -534,6 +527,9 @@ void logic() {
     glm::mat3 camera2object = glm::inverse(glm::mat3(transforms[MODE_CAMERA]) * glm::mat3(mesa_borda.object2world));
     glm::vec3 axis_in_object_coord = camera2object * axis_in_camera_coord;
     mesa_borda.object2world = glm::rotate(mesa_borda.object2world, glm::degrees(angle), axis_in_object_coord);
+	mesa_centro.object2world = glm::rotate(mesa_centro.object2world, glm::degrees(angle), axis_in_object_coord);
+	bola.object2world = glm::rotate(bola.object2world, glm::degrees(angle), axis_in_object_coord);
+	piso.object2world = glm::rotate(bola.object2world, glm::degrees(angle), axis_in_object_coord);
     last_mx = cur_mx;
     last_my = cur_my;
   }
@@ -564,9 +560,9 @@ void draw() {
   glUseProgram(program);
 
   mesa_borda.draw();
+  mesa_centro.draw();
   bola.draw();
   piso.draw();
-  light_bbox.draw_bbox();
 }
 
 void onDisplay()
@@ -584,6 +580,18 @@ void onMouse(int button, int state, int x, int y) {
   } else {
     arcball_on = false;
   }
+   //scroll do mouse
+  if ((button == 3) || (button == 4)) {
+	  if (state == GLUT_UP) {
+		  transZ_direction = 0;
+	  } 
+	   else {
+		  speed_factor = 1;
+		  transZ_direction = 1;
+	   }
+       printf("Scroll %s At %d %d\n", (button == 3) ? "Up" : "Down", x, y);
+   }
+
 }
 
 void onMotion(int x, int y) {
@@ -609,7 +617,7 @@ int main(int argc, char* argv[]) {
   glutInit(&argc, argv);
   glutInitDisplayMode(GLUT_RGBA|GLUT_ALPHA|GLUT_DOUBLE|GLUT_DEPTH);
   glutInitWindowSize(screen_width, screen_height);
-  glutCreateWindow("OBJ viewer");
+  glutCreateWindow("RodrigoDK Billiard");
 
   GLenum glew_status = glewInit();
   if (glew_status != GLEW_OK) {
@@ -618,36 +626,35 @@ int main(int argc, char* argv[]) {
   }
 
   if (!GLEW_VERSION_2_0) {
-    fprintf(stderr, "Error: your graphic card does not support OpenGL 2.0\n");
+    fprintf(stderr, "Erro: nao consegui encontrar suporte opnegl 2.0\n");
     return 1;
   }
 
   char* v_shader_filename = (char*) "phong-shading.vertex";
   char* f_shader_filename = (char*) "phong-shading.fragment";
-  if (argc != 4) {
-    fprintf(stderr, "Usage: %s model.obj vertex_shader.v.glsl fragment_shader.f.glsl\n", argv[0]);
-  } else {
-    v_shader_filename = argv[2];
-    f_shader_filename = argv[3];
-  }
 
+  //se carregou os objetos com sucesso
   if (init_resources(v_shader_filename, f_shader_filename)) {
-    init_view();
+	  //reseta a posicao dos objetos no mundo
+	  init_view();
     glutDisplayFunc(onDisplay);
+	//cuida dos comandos de teclado (teclas especiais como setas)
     glutSpecialFunc(onSpecial);
     glutSpecialUpFunc(onSpecialUp);
+	//cuida dos comandos de mouse
     glutMouseFunc(onMouse);
     glutMotionFunc(onMotion);
+	//modificacoes do tamanho da janela
     glutReshapeFunc(onReshape);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glEnable(GL_DEPTH_TEST);
-    //glDepthFunc(GL_LEQUAL);
-    //glDepthRange(1, 0);
+	//controle de tempo
     last_ticks = glutGet(GLUT_ELAPSED_TIME);
     glutMainLoop();
   }
 
   free_resources();
+  cin.get();
   return 0;
 }
