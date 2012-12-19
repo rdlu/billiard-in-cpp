@@ -1,0 +1,18 @@
+//vetor dinamico da cor difusa
+varying vec3 diffuseColor;
+    // vetor dinamica da cor especular interpolada
+varying vec3 specularColor;
+    // coordenadas da textura
+varying vec4 texCoords;
+    // buffer da textura, acessivel globalmente
+uniform sampler2D mytexture;
+
+void main(void)
+{
+    //so serve pra bolinha
+  //vec2 longitudeLatitude = vec2((atan(texCoords.y, texCoords.x) / 3.1415926 + 1.0) * 0.5,(asin(texCoords.z) / 3.1415926 + 0.5));
+  //para os outros objetos
+  vec2 texcoord =  vec2(texCoords.x, texCoords.z+texCoords.y);
+
+    gl_FragColor = vec4(diffuseColor * vec3(texture2D(mytexture, texcoord)) + specularColor, 1.0);
+}

@@ -1,16 +1,11 @@
-/**
- * From the OpenGL Programming wikibook: http://en.wikibooks.org/wiki/OpenGL_Programming
- * This file is in the public domain.
- * Contributors: Sylvain Beucler
- */
-
 #include <stdio.h>
 #include <stdlib.h>
+//GLEW contem GL.h
 #include <GL/glew.h>
 
 /**
- * Store all the file's contents in memory, useful to pass shaders
- * source code to OpenGL
+* Leitura dos arquivos de shaders
+* Armazena em memoria para transferencia rapida para GPU
  */
 char* file_read(const char* filename)
 {
@@ -21,6 +16,7 @@ char* file_read(const char* filename)
   char* res = (char*)malloc(res_size);
   int nb_read_total = 0;
 
+  //Le até o fim do arquivo em memoria dinamica
   while (!feof(in) && !ferror(in)) {
     if (nb_read_total + BUFSIZ > res_size) {
       if (res_size > 10*1024*1024) break;
@@ -38,7 +34,7 @@ char* file_read(const char* filename)
 }
 
 /**
- * Display compilation errors from the OpenGL shader compiler
+* Logs das mensagens de erro do compilador da GPU
  */
 void print_log(GLuint object)
 {
@@ -48,7 +44,7 @@ void print_log(GLuint object)
   else if (glIsProgram(object))
     glGetProgramiv(object, GL_INFO_LOG_LENGTH, &log_length);
   else {
-    fprintf(stderr, "printlog: Not a shader or a program\n");
+    fprintf(stderr, "printlog: Programa sahder invalido\n");
     return;
   }
 
@@ -64,25 +60,27 @@ void print_log(GLuint object)
 }
 
 /**
- * Compile the shader from file 'filename', with error handling
+ * Compila o arquivo de shader
  */
 GLuint create_shader(const char* filename, GLenum type)
 {
   const GLchar* source = file_read(filename);
   if (source == NULL) {
-    fprintf(stderr, "Error opening %s: ", filename); perror("");
+    fprintf(stderr, "O arquivo %s nao pode ser aberto: ", filename); perror("");
     return 0;
   }
   GLuint res = glCreateShader(type);
   const GLchar* sources[] = {
-    // Define GLSL version
+    // Versao do GLSL
 #ifdef GL_ES_VERSION_2_0
+	  //Android
     "#version 100\n"
 #else
+	  //PC
     "#version 120\n"
 #endif
     ,
-    // GLES2 precision specifiers
+    // Copiado de codigo existente: configura os parametros de compilacao do shader
 #ifdef GL_ES_VERSION_2_0
     // Define default float precision for fragment shaders:
     (type == GL_FRAGMENT_SHADER) ?
@@ -105,6 +103,7 @@ GLuint create_shader(const char* filename, GLenum type)
   glShaderSource(res, 3, sources, NULL);
   free((void*)source);
 
+  //Compila e joga erros pro log
   glCompileShader(res);
   GLint compile_ok = GL_FALSE;
   glGetShaderiv(res, GL_COMPILE_STATUS, &compile_ok);
@@ -118,6 +117,7 @@ GLuint create_shader(const char* filename, GLenum type)
   return res;
 }
 
+//Create program: linka os arquivos compilados em formato executavel da GPU
 GLuint create_program(const char *vertexfile, const char *fragmentfile) {
 	GLuint program = glCreateProgram();
 	GLuint shader;
@@ -149,6 +149,8 @@ GLuint create_program(const char *vertexfile, const char *fragmentfile) {
 	return program;
 }
 
+//Tentativa de separar os shaders por objetos distintos
+//TODO: lógica de controle dos objetos
 GLuint create_gs_program(const char *vertexfile, const char *geometryfile, const char *fragmentfile, GLint input, GLint output, GLint vertices) {
 	GLuint program = glCreateProgram();
 	GLuint shader;
@@ -191,16 +193,18 @@ GLuint create_gs_program(const char *vertexfile, const char *geometryfile, const
 	return program;
 }
 
+//Retorna algum atributo do shader, ultil para checar variaveis dos shaders
 GLint get_attrib(GLuint program, const char *name) {
 	GLint attribute = glGetAttribLocation(program, name);
 	if(attribute == -1)
-		fprintf(stderr, "Could not bind attribute %s\n", name);
+		fprintf(stderr, "Nao consegui capturar o valor do shader %s\n", name);
 	return attribute;
 }
 
+//Retorna um uniform do programa de shaders
 GLint get_uniform(GLuint program, const char *name) {
 	GLint uniform = glGetUniformLocation(program, name);
 	if(uniform == -1)
-		fprintf(stderr, "Could not bind uniform %s\n", name);
+		fprintf(stderr, "Nao consegui capturar o uniform %s\n", name);
 	return uniform;
 }

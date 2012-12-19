@@ -1,0 +1,104 @@
+varying vec3 diffuseColor;
+varying vec3 specularColor;
+varying vec4 texCoords;
+
+attribute vec3 v_coord;
+attribute vec3 v_normal;
+//variaveis dinamicas globais
+uniform mat4 m, v, p;
+uniform mat3 m_3x3_inv_transp;
+uniform mat4 v_inv;
+
+
+
+
+struct fonteLuz
+{
+  vec4 posicao;
+  vec4 difusao;
+  vec4 specular;
+  float atenuacaoConstante, atenuacaoLinear, atenuacaoQuadratica;
+  float spotCutoff, spotExponent;
+  vec3 spotDirection;
+};
+
+
+fonteLuz luz0 = fonteLuz(
+  vec4(0.0,  1.0,  2.0, 1.0),
+  vec4(1.0,  1.0,  1.0, 1.0),
+  vec4(1.0,  1.0,  1.0, 1.0),
+  0.0, 1.0, 0.0,
+  180.0, 0.0,
+  vec3(0.0, 0.0, 0.0)
+);
+vec4 cenaAmbiente = vec4(0.2, 0.2, 0.2, 1.0);
+
+//variaveis que vao compor a reflexao de luz do objeto
+struct material
+{
+  vec4 ambiente;
+  vec4 difusao;
+  vec4 specular;
+  float reflexao;
+};
+
+//contribuicao de cada tipo meuMaterial
+material meuMaterial = material(
+  vec4(0.2, 0.2, 0.2, 1.0),
+  vec4(1.0, 0.8, 0.8, 1.0),
+  vec4(1.0, 1.0, 1.0, 1.0),
+  5.0
+);
+
+
+
+void main(void)
+{
+  vec4 v_coord4 = vec4(v_coord, 1.0);
+  mat4 mvp = p*v*m;
+  vec3 normalDirection = normalize(m_3x3_inv_transp * v_normal);
+  vec3 viewDirection = normalize(vec3(v_inv * vec4(0.0, 0.0, 0.0, 1.0) - m * v_coord4));
+  vec3 luzDirecao;
+  float atenuacao;
+
+  if (luz0.posicao.w == 0.0) // luz direcional nao atenua
+    {
+      atenuacao = 1.0;
+      luzDirecao = normalize(vec3(luz0.posicao));
+    }
+  else // luz ambiente atenua
+    {
+      vec3 vertexTofonteLuz = vec3(luz0.posicao - m * v_coord4);
+      float distancia = length(vertexTofonteLuz);
+      luzDirecao = normalize(vertexTofonteLuz);
+      atenuacao = 1.0 / (luz0.atenuacaoConstante
+                           + luz0.atenuacaoLinear * distancia
+                           + luz0.atenuacaoQuadratica * distancia * distancia);
+
+
+    }
+
+  //deve ser sem a cor do material
+  vec3 luzAmbiente = vec3(cenaAmbiente);
+//deve ser sem a cor do material
+  vec3 reflexoDifuso = atenuacao
+    * vec3(luz0.difusao)
+    * max(0.0, dot(normalDirection, luzDirecao));
+
+  vec3 reflexoSpecular;
+  if (dot(normalDirection, luzDirecao) < 0.0) // luz e normal em sentidos opostos?
+    {
+      reflexoSpecular = vec3(0.0, 0.0, 0.0); // sem reflexo especular
+    }
+  else // luz e normal em sentidos iguais
+    {
+      reflexoSpecular = atenuacao * vec3(luz0.specular) * vec3(meuMaterial.specular)
+        * pow(max(0.0, dot(reflect(-luzDirecao, normalDirection), viewDirection)),
+              meuMaterial.reflexao);
+    }
+
+  diffuseColor = luzAmbiente + reflexoDifuso;
+  specularColor = reflexoSpecular;
+  texCoords = v_coord4;
+  gl_Position = mvp * v_coord4;
+}

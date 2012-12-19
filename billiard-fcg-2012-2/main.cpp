@@ -16,30 +16,37 @@
 #include <../glm/gtc/type_ptr.hpp>
 #include "shader.h"
 
+//Tamanho do Piso
 #define PISO_SZ 15
 
+//Tamanho inicial da tela
 int screen_width=800, screen_height=600;
+//Ponteiro para o executavel de shaders
 GLuint program;
+
+//Atributos que serao usados na manipulacao de objetos e camera
 GLint attribute_v_coord = -1, attribute_v_normal = -1, attribute_v_texcoords = -1, attribute_v_tangent = 1;
 GLint uniform_m = -1, uniform_v = -1, uniform_p = -1;
 GLint uniform_m_3x3_inv_transp = -1, uniform_v_inv = -1, uniform_mytexture = -1;
+
+//Atributos para o funcionamento da arcball
 bool compute_arcball;
 int last_mx = 0, last_my = 0, cur_mx = 0, cur_my = 0;
 int arcball_on = false;
 
 using namespace std;
 
+//Modos de camera
+//O modo camera (em cima da mesa) sera usado numa viewport e o modo object (bolinha) em outro
 enum MODES { MODE_CAMERA, MODE_OBJECT, MODE_LIGHT, MODE_LAST } view_mode;
 int rotY_direction = 0, rotX_direction = 0, transZ_direction = 0, strife = 0;
 float speed_factor = 1;
 glm::mat4 transforms[MODE_LAST];
 int last_ticks = 0;
 
-static unsigned int fps_start = glutGet(GLUT_ELAPSED_TIME);
-static unsigned int fps_frames = 0;
-
 class Mesh {
 private:
+	//Objetos em buffer, apos calculos, nao podem ser mexidos diretamente
   GLuint vbo_vertices, vbo_normals, vbo_texcoords, vbo_tangents, ibo_elements;
 public:
   vector<glm::vec4> vertices;
@@ -51,8 +58,10 @@ public:
   GLuint texture_id;
   int tex_width, tex_height;
 
+  //Construtor, cria um objeto vazio
   Mesh() : vbo_vertices(0), vbo_normals(0), vbo_texcoords(0), vbo_tangents(0),
            ibo_elements(0), object2world(glm::mat4(1)) {}
+  //Destrutor: elimina tudo
   ~Mesh() {
     if (vbo_vertices != 0)
       glDeleteBuffers(1, &vbo_vertices);
@@ -67,10 +76,10 @@ public:
   }
 
   /**
-   * Store object vertices, normals and/or elements in graphic card
-   * buffers
+   / Upload para os buffers da GPU
    */
   void upload() {
+	  //Upload os vertices
     if (this->vertices.size() > 0) {
       glGenBuffers(1, &this->vbo_vertices);
       glBindBuffer(GL_ARRAY_BUFFER, this->vbo_vertices);
@@ -78,6 +87,7 @@ public:
 		   this->vertices.data(), GL_STATIC_DRAW);
     }
     
+	//Upload das Normais
     if (this->normals.size() > 0) {
       glGenBuffers(1, &this->vbo_normals);
       glBindBuffer(GL_ARRAY_BUFFER, this->vbo_normals);
@@ -85,6 +95,7 @@ public:
 		   this->normals.data(), GL_STATIC_DRAW);
     }
     
+	//Upload dos indices dos elementos dos buffers
     if (this->elements.size() > 0) {
       glGenBuffers(1, &this->ibo_elements);
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->ibo_elements);
@@ -92,7 +103,7 @@ public:
 		   this->elements.data(), GL_STATIC_DRAW);
     }
 
-	
+	//Upload das coordenadas de textura do Blender (nao usado ainda)
     if (this->texcoords.size() > 0) {
       glGenBuffers(1, &this->vbo_texcoords);
       glBindBuffer(GL_ARRAY_BUFFER, this->vbo_texcoords);
@@ -100,12 +111,14 @@ public:
 		   this->texcoords.data(), GL_STATIC_DRAW);
     }
 
+	//Upload da textura do objeto
 	if(this->texture_id > 0) {
 		glBindTexture(GL_TEXTURE_2D, this->texture_id);
 		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 	}
     
+	//Upload das tangentes usadas na iluminacao
     if (this->tangents.size() > 0) {
       glGenBuffers(1, &this->vbo_tangents);
       glBindBuffer(GL_ARRAY_BUFFER, this->vbo_tangents);
@@ -115,19 +128,19 @@ public:
   }
 
   /**
-   * Draw the object
+   * Desenha o dito cujo
    */
   void draw() {
     if (this->vbo_vertices != 0) {
       glEnableVertexAttribArray(attribute_v_coord);
       glBindBuffer(GL_ARRAY_BUFFER, this->vbo_vertices);
       glVertexAttribPointer(
-        attribute_v_coord,  // attribute
-        4,                  // number of elements per vertex, here (x,y,z,w)
-        GL_FLOAT,           // the type of each element
-        GL_FALSE,           // take our values as-is
-        0,                  // no extra data between each position
-        0                   // offset of first element
+        attribute_v_coord,  // 
+        4,                  // numero de elementos por vertice (x,y,z,w)
+        GL_FLOAT,           // tipo
+        GL_FALSE,           // nao pre-processa os valores
+        0,                  // dados extras entre as posicoes
+        0                   // primeiro elemento
       );
     }
 
@@ -135,29 +148,29 @@ public:
       glEnableVertexAttribArray(attribute_v_normal);
       glBindBuffer(GL_ARRAY_BUFFER, this->vbo_normals);
       glVertexAttribPointer(
-        attribute_v_normal, // attribute
-        3,                  // number of elements per vertex, here (x,y,z)
-        GL_FLOAT,           // the type of each element
-        GL_FALSE,           // take our values as-is
-        0,                  // no extra data between each position
-        0                   // offset of first element
+        attribute_v_normal, // 
+        3,                  //  numero de elementos por vertice (x,y,z)
+        GL_FLOAT,           
+        GL_FALSE,           
+        0,                  
+        0                   
       );
     }
 
+	//Ativa a textura no objeto
 	if(this->texture_id > 0) {
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, this->texture_id);
 		glUniform1i(uniform_mytexture, /*GL_TEXTURE*/0);
 	}
     
-    /* Apply object's transformation matrix */
+    /* Matriz de transformação do objeto */
     glUniformMatrix4fv(uniform_m, 1, GL_FALSE, glm::value_ptr(this->object2world));
-    /* Transform normal vectors with transpose of inverse of upper left
-       3x3 model matrix (ex-gl_NormalMatrix): */
+    /* Matriz de transformacao dos vetores normais */
     glm::mat3 m_3x3_inv_transp = glm::transpose(glm::inverse(glm::mat3(this->object2world)));
     glUniformMatrix3fv(uniform_m_3x3_inv_transp, 1, GL_FALSE, glm::value_ptr(m_3x3_inv_transp));
     
-    /* Push each element in buffer_vertices to the vertex shader */
+    /* Leva o buffer de vertices e elementos ao shader de vetices */
     if (this->ibo_elements != 0) {
       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->ibo_elements);
       int size;  glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
@@ -172,9 +185,12 @@ public:
       glDisableVertexAttribArray(attribute_v_coord);
   }
 };
+
+//declaracao dos objetos
 Mesh piso, mesa_borda, mesa_centro, bola, light_bbox;
 
-
+//Carrega o arquivo do blender
+//TODO: Mapas de texturas
 void load_obj(const char* filename, const char* texturename, Mesh* mesh) {
   ifstream in(filename, ios::in);
   if (!in) { cout << "Nao consegui ler o arquivo OBJ: " << filename << endl; exit(1); }
@@ -199,6 +215,7 @@ void load_obj(const char* filename, const char* texturename, Mesh* mesh) {
     else { /* qualquer outra linha */ }
   }
 
+  //Calcula as normais
   mesh->normals.resize(mesh->vertices.size(), glm::vec3(0.0, 0.0, 0.0));
   nb_seen.resize(mesh->vertices.size(), 0);
   for (unsigned int i = 0; i < mesh->elements.size(); i+=3) {
@@ -214,9 +231,10 @@ void load_obj(const char* filename, const char* texturename, Mesh* mesh) {
       GLushort cur_v = v[j];
       nb_seen[cur_v]++;
       if (nb_seen[cur_v] == 1) {
+		  //ja esta normalizado
 	mesh->normals[cur_v] = normal;
       } else {
-	// average
+	// normalize agora
 	mesh->normals[cur_v].x = mesh->normals[cur_v].x * (1.0 - 1.0/nb_seen[cur_v]) + normal.x * 1.0/nb_seen[cur_v];
 	mesh->normals[cur_v].y = mesh->normals[cur_v].y * (1.0 - 1.0/nb_seen[cur_v]) + normal.y * 1.0/nb_seen[cur_v];
 	mesh->normals[cur_v].z = mesh->normals[cur_v].z * (1.0 - 1.0/nb_seen[cur_v]) + normal.z * 1.0/nb_seen[cur_v];
@@ -237,6 +255,7 @@ void load_obj(const char* filename, const char* texturename, Mesh* mesh) {
   unsigned char* img = SOIL_load_image(texturename, &mesh->tex_width, &mesh->tex_height, NULL, 0);
 }
 
+//Inicializacao basica
 int init_resources(char* vshader_filename, char* fshader_filename)
 {
 	//carrega os objetos do arquivo e inicializa
@@ -297,6 +316,7 @@ int init_resources(char* vshader_filename, char* fshader_filename)
   if ((vs = create_shader(vshader_filename, GL_VERTEX_SHADER))   == 0) return 0;
   if ((fs = create_shader(fshader_filename, GL_FRAGMENT_SHADER)) == 0) return 0;
 
+  //Link do shader
   program = glCreateProgram();
   glAttachShader(program, vs);
   glAttachShader(program, fs);
@@ -307,6 +327,8 @@ int init_resources(char* vshader_filename, char* fshader_filename)
     print_log(program);
     return 0;
   }
+
+  //Valida o linking
   glValidateProgram(program);
   glGetProgramiv(program, GL_VALIDATE_STATUS, &validate_ok);
   if (!validate_ok) {
@@ -314,58 +336,67 @@ int init_resources(char* vshader_filename, char* fshader_filename)
     print_log(program);
   }
 
+  //Bind das coordenadas
   const char* attribute_name;
   attribute_name = "v_coord";
   attribute_v_coord = glGetAttribLocation(program, attribute_name);
   if (attribute_v_coord == -1) {
-    fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
+    fprintf(stderr, "Nao consegui capturar o attribute %s\n", attribute_name);
     return 0;
   }
+  //Bind das normais
   attribute_name = "v_normal";
   attribute_v_normal = glGetAttribLocation(program, attribute_name);
   if (attribute_v_normal == -1) {
-    fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
+    fprintf(stderr, "Nao consegui capturar o attribute %s\n", attribute_name);
     return 0;
   }
+  //Bind do uniform do model
+  //Definicao de uniform:
+  //A uniform is a global GLSL variable declared with the "uniform" storage qualifier. These act as parameters that the user of a shader program can pass to that program. They are stored in a program object. 
   const char* uniform_name;
   uniform_name = "m";
   uniform_m = glGetUniformLocation(program, uniform_name);
   if (uniform_m == -1) {
-    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
-    return 0;
-  }
-  uniform_name = "v";
-  uniform_v = glGetUniformLocation(program, uniform_name);
-  if (uniform_v == -1) {
-    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
-    return 0;
-  }
-  uniform_name = "p";
-  uniform_p = glGetUniformLocation(program, uniform_name);
-  if (uniform_p == -1) {
-    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
-    return 0;
-  }
-  uniform_name = "m_3x3_inv_transp";
-  uniform_m_3x3_inv_transp = glGetUniformLocation(program, uniform_name);
-  if (uniform_m_3x3_inv_transp == -1) {
-    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
-    return 0;
-  }
-  uniform_name = "v_inv";
-  uniform_v_inv = glGetUniformLocation(program, uniform_name);
-  if (uniform_v_inv == -1) {
-    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
-    return 0;
-  }
-  uniform_name = "mytexture";
-  uniform_mytexture = glGetUniformLocation(program, uniform_name);
-  if (uniform_mytexture == -1) {
-    fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
+    fprintf(stderr, "Nao consegui capturar o uniform %s\n", uniform_name);
     return 0;
   }
 
-  fps_start = glutGet(GLUT_ELAPSED_TIME);
+  //Bind do uniform da view
+  uniform_name = "v";
+  uniform_v = glGetUniformLocation(program, uniform_name);
+  if (uniform_v == -1) {
+    fprintf(stderr, "Nao consegui capturar o uniform %s\n", uniform_name);
+    return 0;
+  }
+  //BInd do uniform da projection
+  uniform_name = "p";
+  uniform_p = glGetUniformLocation(program, uniform_name);
+  if (uniform_p == -1) {
+    fprintf(stderr, "Nao consegui capturar o uniform %s\n", uniform_name);
+    return 0;
+  }
+  //Bind da operacao de transposicao de matrizes 3x3
+  uniform_name = "m_3x3_inv_transp";
+  uniform_m_3x3_inv_transp = glGetUniformLocation(program, uniform_name);
+  if (uniform_m_3x3_inv_transp == -1) {
+    fprintf(stderr,"Nao consegui capturar o uniform %s\n", uniform_name);
+    return 0;
+  }
+  //Invesao de vetor
+  uniform_name = "v_inv";
+  uniform_v_inv = glGetUniformLocation(program, uniform_name);
+  if (uniform_v_inv == -1) {
+    fprintf(stderr, "Nao consegui capturar o uniform %s\n", uniform_name);
+    return 0;
+  }
+  //Acesso a textura
+  uniform_name = "mytexture";
+  uniform_mytexture = glGetUniformLocation(program, uniform_name);
+  if (uniform_mytexture == -1) {
+    fprintf(stderr, "Nao consegui capturar o uniform %s\n", uniform_name);
+    return 0;
+  }
 
   return 1;
 }
@@ -374,6 +405,8 @@ void init_view() {
   mesa_centro.object2world = glm::mat4(1);
   mesa_borda.object2world = glm::mat4(1);
   bola.object2world = glm::mat4(1);
+  //Inicia a famosa camera
+  //GL2 nao implementa o lookat, precisamos do GLM
   transforms[MODE_CAMERA] = glm::lookAt(
     glm::vec3(0.0,  8.0, 8.0),   // eye
     glm::vec3(0.0,  0.0, 0.0),   // direction
@@ -399,27 +432,27 @@ void onSpecial(int key, int x, int y) {
   case GLUT_KEY_F2:
     view_mode = MODE_CAMERA;
     break;
-  case GLUT_KEY_F3:
-    view_mode = MODE_LIGHT;
-    break;
   case GLUT_KEY_LEFT:
     rotY_direction = 1;
     break;
   case GLUT_KEY_RIGHT:
     rotY_direction = -1;
     break;
-  case GLUT_KEY_UP:
+ /* case GLUT_KEY_UP:
     transZ_direction = 1;
     break;
   case GLUT_KEY_DOWN:
     transZ_direction = -1;
-    break;
-  case GLUT_KEY_PAGE_UP:
+    break;*/
+	//cabeca pra baixo
+  case GLUT_KEY_UP:
     rotX_direction = -1;
     break;
-  case GLUT_KEY_PAGE_DOWN:
+	//cabeca pra cima
+  case GLUT_KEY_DOWN:
     rotX_direction = 1;
     break;
+	//reseta a bicharada
   case GLUT_KEY_HOME:
     init_view();
     break;
@@ -463,31 +496,24 @@ glm::vec3 get_arcball_vector(int x, int y) {
 }
 
 void logic() {
-  /* FPS count */
- /* {
-    fps_frames++;
-    int delta_t = glutGet(GLUT_ELAPSED_TIME) - fps_start;
-    if (delta_t > 1000) {
-      cout << 1000.0 * fps_frames / delta_t << endl;
-      fps_frames = 0;
-      fps_start = glutGet(GLUT_ELAPSED_TIME);
-    }
-  }*/
-
-  /* Handle keyboard-based transformations */
+  /* Movimentacao de camera no teclado */
+	//Calcula o tempo decorrido para movimentacao suave
   int delta_t = glutGet(GLUT_ELAPSED_TIME) - last_ticks;
   last_ticks = glutGet(GLUT_ELAPSED_TIME);
 
-  float delta_transZ = transZ_direction * delta_t / 1000.0 * 5 * speed_factor;  // 5 units per second
+  //Calcula o delta da movimentacao baseado na diferenca do tempo, com controle de suavidade
+  float delta_transZ = transZ_direction * delta_t / 1000.0 * 6 * speed_factor;  // 6 unidade de movimenacao
   float delta_transX = 0, delta_transY = 0, delta_rotY = 0, delta_rotX = 0;
   if (strife) {
-    delta_transX = rotY_direction * delta_t / 1000.0 * 3 * speed_factor;  // 3 units per second
-    delta_transY = rotX_direction * delta_t / 1000.0 * 3 * speed_factor;  // 3 units per second
+    delta_transX = rotY_direction * delta_t / 1000.0 * 5 * speed_factor;  // 5 unidade/s
+    delta_transY = rotX_direction * delta_t / 1000.0 * 5 * speed_factor;  // 5 unidades/s
   } else {
-    delta_rotY =  rotY_direction * delta_t / 1000.0 * 120 * speed_factor;  // 120° per second
-    delta_rotX = -rotX_direction * delta_t / 1000.0 * 120 * speed_factor;  // 120° per second
+	  //se nao for strife, gira em 120 graus por segundo
+    delta_rotY =  rotY_direction * delta_t / 1000.0 * 120 * speed_factor; 
+    delta_rotX = -rotX_direction * delta_t / 1000.0 * 120 * speed_factor;
   }
   
+  //Movimenta a bicharada com os deltas ja calculados
   if (view_mode == MODE_OBJECT) {
     mesa_borda.object2world = glm::rotate(mesa_borda.object2world, delta_rotY, glm::vec3(0.0, 1.0, 0.0));
     mesa_borda.object2world = glm::rotate(mesa_borda.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
@@ -499,10 +525,7 @@ void logic() {
     bola.object2world = glm::rotate(bola.object2world, delta_rotX, glm::vec3(1.0, 0.0, 0.0));
     bola.object2world = glm::translate(bola.object2world, glm::vec3(0.0, 0.0, delta_transZ));
   } else if (view_mode == MODE_CAMERA) {
-    // Camera is reverse-facing, so reverse Z translation and X rotation.
-    // Plus, the View matrix is the inverse of the camera2world (it's
-    // world->camera), so we'll reverse the transformations.
-    // Alternatively, imagine that you transform the world, instead of positioning the camera.
+	  //Modo camera, movimentamos o MUNDO na verdade
     if (strife) {
       transforms[MODE_CAMERA] = glm::translate(glm::mat4(1.0), glm::vec3(delta_transX, 0.0, 0.0)) * transforms[MODE_CAMERA];
     } else {
@@ -535,7 +558,7 @@ void logic() {
   }
 
   // Model
-  // Set in onDisplay() - cf. mesa_borda.object2world
+  // Vai no onDisplay(), exemplo: mesa_borda.object2world
 
   // View
   glm::mat4 world2camera = transforms[MODE_CAMERA];
@@ -543,6 +566,7 @@ void logic() {
   // Projection
   glm::mat4 camera2screen = glm::perspective(45.0f, 1.0f*screen_width/screen_height, 0.1f, 100.0f);
 
+  //Avisa para usar o programa compilado
   glUseProgram(program);
   glUniformMatrix4fv(uniform_v, 1, GL_FALSE, glm::value_ptr(world2camera));
   glUniformMatrix4fv(uniform_p, 1, GL_FALSE, glm::value_ptr(camera2screen));
@@ -553,6 +577,8 @@ void logic() {
   glutPostRedisplay();
 }
 
+
+//Desenha a bicharada na tela
 void draw() {
   glClearColor(0.45, 0.45, 0.45, 1.0);
   glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -565,6 +591,8 @@ void draw() {
   piso.draw();
 }
 
+
+//Callback de display do GL
 void onDisplay()
 {
   logic();
@@ -589,7 +617,7 @@ void onMouse(int button, int state, int x, int y) {
 		  speed_factor = 1;
 		  transZ_direction = 1;
 	   }
-       printf("Scroll %s At %d %d\n", (button == 3) ? "Up" : "Down", x, y);
+       printf("Scroll %s posicao %d %d\n", (button == 3) ? "Up" : "Down", x, y);
    }
 
 }
@@ -621,7 +649,7 @@ int main(int argc, char* argv[]) {
 
   GLenum glew_status = glewInit();
   if (glew_status != GLEW_OK) {
-    fprintf(stderr, "Error: %s\n", glewGetErrorString(glew_status));
+    fprintf(stderr, "Erro de carregamento do GL : %s\n", glewGetErrorString(glew_status));
     return 1;
   }
 

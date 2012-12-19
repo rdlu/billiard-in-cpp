@@ -14,6 +14,7 @@
     <ProjectGuid>{D703BC2C-87A1-4240-831E-74518CEDCEF4}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>billiardfpi20122</RootNamespace>
+    <ProjectName>billiard-FCG-2012-2</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
