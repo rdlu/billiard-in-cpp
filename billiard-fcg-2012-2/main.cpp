@@ -14,6 +14,10 @@
 #include <../glm/glm.hpp>
 #include <../glm/gtc/matrix_transform.hpp>
 #include <../glm/gtc/type_ptr.hpp>
+/* FONTES DE TEXTO COM FREETYPE */
+#include <../freetype/ft2build.h>
+#include FT_FREETYPE_H
+
 #include "shader.h"
 
 //Tamanho do Piso
@@ -22,12 +26,20 @@
 //Tamanho inicial da tela
 int screen_width=800, screen_height=600;
 //Ponteiro para o executavel de shaders
-GLuint program;
+GLuint program, program_for_text, program_for_ball;
 
 //Atributos que serao usados na manipulacao de objetos e camera
 GLint attribute_v_coord = -1, attribute_v_normal = -1, attribute_v_texcoords = -1, attribute_v_tangent = 1;
 GLint uniform_m = -1, uniform_v = -1, uniform_p = -1;
 GLint uniform_m_3x3_inv_transp = -1, uniform_v_inv = -1, uniform_mytexture = -1;
+//Atributos usados nos textos
+GLint attribute_coord; GLint uniform_tex; GLint uniform_color;
+struct point {
+	GLfloat x;
+	GLfloat y;
+	GLfloat s;
+	GLfloat t;
+};
 
 //Atributos para o funcionamento da arcball
 bool compute_arcball;
@@ -438,12 +450,6 @@ void onSpecial(int key, int x, int y) {
   case GLUT_KEY_RIGHT:
     rotY_direction = -1;
     break;
- /* case GLUT_KEY_UP:
-    transZ_direction = 1;
-    break;
-  case GLUT_KEY_DOWN:
-    transZ_direction = -1;
-    break;*/
 	//cabeca pra baixo
   case GLUT_KEY_UP:
     rotX_direction = -1;
@@ -502,7 +508,7 @@ void logic() {
   last_ticks = glutGet(GLUT_ELAPSED_TIME);
 
   //Calcula o delta da movimentacao baseado na diferenca do tempo, com controle de suavidade
-  float delta_transZ = transZ_direction * delta_t / 1000.0 * 6 * speed_factor;  // 6 unidade de movimenacao
+  float delta_transZ = transZ_direction * delta_t / 1000.0 * 3 * speed_factor;  // 3 unidade de movimenacao
   float delta_transX = 0, delta_transY = 0, delta_rotY = 0, delta_rotX = 0;
   if (strife) {
     delta_transX = rotY_direction * delta_t / 1000.0 * 5 * speed_factor;  // 5 unidade/s
